@@ -1,0 +1,66 @@
+name: ShipGate deploy approval
+description: Pause a workflow until the deploy is approved in Slack via ShipGate.
+branding:
+  icon: shield
+  color: green
+
+inputs:
+  shipgate-url:
+    description: Base URL of your ShipGate server
+    required: true
+  api-token:
+    description: ShipGate API bearer token
+    required: true
+  service:
+    description: Service being deployed
+    required: true
+  environment:
+    description: Target environment (e.g. staging, production)
+    required: true
+  version:
+    description: Version, tag or SHA being deployed
+    required: true
+  requester-slack-id:
+    description: Slack user ID of the person triggering the deploy (enables DMs + self-approval check)
+    required: false
+    default: ""
+  description:
+    description: Notes shown to approvers (changelog, risk, ticket link)
+    required: false
+    default: ""
+  timeout-minutes:
+    description: Minutes before the request expires
+    required: false
+    default: "30"
+
+outputs:
+  request-id:
+    description: ShipGate approval request ID (use it to report deploy events)
+    value: ${{ steps.gate.outputs.request-id }}
+  status:
+    description: Final status (approved, rejected, expired, cancelled)
+    value: ${{ steps.gate.outputs.status }}
+
+runs:
+  using: composite
+  steps:
+    - id: gate
+      shell: bash
+      env:
+        SHIPGATE_URL: ${{ inputs.shipgate-url }}
+        SHIPGATE_API_TOKEN: ${{ inputs.api-token }}
+        # Pass inputs through env, never inline in the script, to avoid shell injection.
+        IN_SERVICE: ${{ inputs.service }}
+        IN_ENV: ${{ inputs.environment }}
+        IN_VERSION: ${{ inputs.version }}
+        IN_SLACK_ID: ${{ inputs.requester-slack-id }}
+        IN_DESC: ${{ inputs.description }}
+        IN_TIMEOUT: ${{ inputs.timeout-minutes }}
+      run: |
+        python3 "$GITHUB_ACTION_PATH/scripts/shipgate_gate.py" request \
+          --service "$IN_SERVICE" \
+          --environment "$IN_ENV" \
+          --version "$IN_VERSION" \
+          --requester-slack-id "$IN_SLACK_ID" \
+          --description "$IN_DESC" \
+          --timeout-minutes "$IN_TIMEOUT"

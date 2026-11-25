@@ -1,0 +1,28 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: shipgate
+      POSTGRES_PASSWORD: shipgate
+      POSTGRES_DB: shipgate
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "shipgate"]
+      interval: 5s
+      retries: 10
+
+  shipgate:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://shipgate:shipgate@db:5432/shipgate
+    ports:
+      - "${SHIPGATE_HOST_PORT:-8081}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

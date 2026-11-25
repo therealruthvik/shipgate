@@ -1,0 +1,31 @@
+# Fly.io config for ShipGate.
+# ShipGate holds a Slack Socket Mode websocket and runs the expiry sweeper in-process,
+# so exactly ONE machine must stay running (no auto-stop, no scale-out).
+app = "shipgate-10d89c"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  SHIPGATE_REQUIRED_APPROVALS = "production=2,staging=1"
+  SHIPGATE_TIMEOUT_MINUTES = "30"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/healthz"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "15s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
