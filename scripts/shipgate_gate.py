@@ -41,13 +41,20 @@ def api(method: str, path: str, body: dict | None = None, retries: int = 3) -> d
             with urllib.request.urlopen(req, timeout=15) as resp:
                 return json.loads(resp.read())
         except urllib.error.HTTPError as exc:
-            if exc.code < 500 or attempt == retries:
+            # 4xx = our request is wrong; retrying won't help.
+            if exc.code < 500:
                 sys.exit(f"ShipGate API error {exc.code}: {exc.read().decode(errors='replace')}")
-        except urllib.error.URLError as exc:
             if attempt == retries:
-                sys.exit(f"ShipGate unreachable: {exc.reason}")
+                raise Unavailable(f"HTTP {exc.code}") from exc
+        except OSError as exc:  # URLError, TimeoutError, ConnectionResetError, ...
+            if attempt == retries:
+                raise Unavailable(str(getattr(exc, "reason", exc))) from exc
         time.sleep(2 * attempt)
     raise AssertionError("unreachable")
+
+
+class Unavailable(Exception):
+    """ShipGate could not be reached after retries (network error, timeout, 5xx)."""
 
 
 def set_output(name: str, value: str) -> None:
@@ -81,16 +88,32 @@ def cmd_request(args: argparse.Namespace) -> int:
     # If the workflow run is cancelled, withdraw the request so nobody approves a dead run.
     def on_term(signum, _frame):
         print("Cancelled; withdrawing approval request.", flush=True)
-        api("POST", f"/approvals/{rid}/cancel", retries=1)
+        try:
+            api("POST", f"/approvals/{rid}/cancel", retries=1)
+        except Unavailable:
+            print("Could not withdraw request; it will expire on its own.", flush=True)
         sys.exit(130)
 
     signal.signal(signal.SIGTERM, on_term)
     signal.signal(signal.SIGINT, on_term)
 
-    status, last = created["status"], None
+    # Ride out short ShipGate outages (restarts, deploys, network blips) while waiting;
+    # fail closed (block the deploy) if it stays unreachable too long.
+    status, last, down_since = created["status"], None, None
     while status not in FINAL:
         time.sleep(args.poll_seconds)
-        current = api("GET", f"/approvals/{rid}")
+        try:
+            current = api("GET", f"/approvals/{rid}")
+        except Unavailable as exc:
+            down_since = down_since or time.monotonic()
+            down_for = time.monotonic() - down_since
+            print(f"  ShipGate unreachable ({exc}); retrying ({int(down_for)}s)", flush=True)
+            if down_for > args.max_outage_seconds:
+                print("ShipGate unreachable for too long; blocking deploy.", file=sys.stderr)
+                set_output("status", "unreachable")
+                return 1
+            continue
+        down_since = None
         status = current["status"]
         progress = f"{current['approvals']}/{current['required_approvals']}"
         if progress != last:
@@ -127,6 +150,7 @@ def main() -> int:
     r.add_argument("--description")
     r.add_argument("--timeout-minutes", type=int)
     r.add_argument("--poll-seconds", type=int, default=10)
+    r.add_argument("--max-outage-seconds", type=int, default=300)
     r.set_defaults(fn=cmd_request)
 
     e = sub.add_parser("event")
@@ -136,7 +160,11 @@ def main() -> int:
     e.set_defaults(fn=cmd_event)
 
     args = p.parse_args()
-    return args.fn(args)
+    try:
+        return args.fn(args)
+    except Unavailable as exc:
+        print(f"ShipGate unreachable: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
