@@ -114,3 +114,18 @@ def test_reject_button_blocked_for_non_approver(bolt, make_request):
     bolt.dispatch(_block_action(slack_ui.REJECT_ACTION, req.id, "UMALLORY"))
     bolt.calls.views_open.assert_not_called()
     bolt.calls.chat_postEphemeral.assert_called_once()
+
+
+def test_notifier_disables_link_unfurls(make_request):
+    from shipgate.slack_app import SlackNotifier
+
+    client = MagicMock()
+    client.chat_postMessage.return_value = {"channel": "C1", "ts": "1.1"}
+    n = SlackNotifier(client, "C1")
+    req = make_request()
+    req.slack_channel, req.slack_ts = "C1", "1.1"
+    n.post_request(req)
+    n.post_in_thread(req, "hi https://github.com/x")
+    n.notify_user("U1", "hi")
+    for call in client.chat_postMessage.call_args_list:
+        assert call.kwargs["unfurl_links"] is False and call.kwargs["unfurl_media"] is False

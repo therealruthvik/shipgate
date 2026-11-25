@@ -1,6 +1,17 @@
 # ShipGate
 
+[![CI](https://github.com/therealruthvik/shipgate/actions/workflows/ci.yml/badge.svg)](https://github.com/therealruthvik/shipgate/actions/workflows/ci.yml)
+[![Deploy (demo)](https://github.com/therealruthvik/shipgate/actions/workflows/deploy-demo.yml/badge.svg)](https://github.com/therealruthvik/shipgate/actions/workflows/deploy-demo.yml)
+
 **Slack-based deploy approvals for CI/CD pipelines.** A pipeline pauses before deploying, ShipGate posts an approval request to Slack, approvers click **Approve** / **Reject**, and the pipeline continues or stops. Every decision is stored for audit.
+
+![A ShipGate deploy request in Slack: approved, with the deploy started and succeeded updates in the thread](docs/slack-flow.png)
+
+## Live demo
+
+- **Running on Fly.io** with Neon Postgres. It's a single always-on machine holding the Slack Socket Mode connection.
+- **Real pipeline runs:** see the [Deploy (demo) workflow](https://github.com/therealruthvik/shipgate/actions/workflows/deploy-demo.yml). Each run goes **build → Slack approval gate → deploy → status reported back to the Slack thread**.
+- The demo workflow is set up as a real team would use it. Production requires 2 approvers, and the person who triggered the deploy can't approve it.
 
 ```
 GitHub Actions ──POST /approvals──► ShipGate (FastAPI + Slack Bolt, Socket Mode)

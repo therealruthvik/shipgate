@@ -17,6 +17,9 @@ from .service import ApprovalService, NotFound
 
 log = logging.getLogger(__name__)
 
+# The pipeline-run link would otherwise expand into a large GitHub preview card.
+NO_UNFURL = {"unfurl_links": False, "unfurl_media": False}
+
 
 class SlackNotifier:
     def __init__(self, client: WebClient, channel_id: str) -> None:
@@ -28,6 +31,7 @@ class SlackNotifier:
             channel=self.channel_id,
             text=slack_ui.summary_text(request),
             blocks=slack_ui.request_blocks(request),
+            **NO_UNFURL,
         )
         return resp["channel"], resp["ts"]
 
@@ -45,12 +49,12 @@ class SlackNotifier:
         if not (request.slack_channel and request.slack_ts):
             return
         self.client.chat_postMessage(
-            channel=request.slack_channel, thread_ts=request.slack_ts, text=text
+            channel=request.slack_channel, thread_ts=request.slack_ts, text=text, **NO_UNFURL
         )
 
     def notify_user(self, slack_user_id: str, text: str) -> None:
         # chat.postMessage to a user ID opens/uses the bot DM.
-        self.client.chat_postMessage(channel=slack_user_id, text=text)
+        self.client.chat_postMessage(channel=slack_user_id, text=text, **NO_UNFURL)
 
 
 class UserGroupApprovers:
